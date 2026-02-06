@@ -77,7 +77,7 @@ class EmailRuleTest extends UnitTestCase
             try {
                 (new EmailRule())->test($element, $value);
                 $this->fail('Expected exception was not thrown');
-            } catch (\UnexpectedValueException|InvalidCharacterException $e) {
+            } catch (\UnexpectedValueException | InvalidCharacterException) {
                 $this->assertTrue(true);
             }
         }
