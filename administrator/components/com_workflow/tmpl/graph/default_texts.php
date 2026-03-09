@@ -100,6 +100,8 @@ $translationStrings = [
     'COM_WORKFLOW_GRAPH_WORKFLOWS_EDIT',
     'COM_WORKFLOW_GRAPH_ZOOM_IN',
     'COM_WORKFLOW_GRAPH_ZOOM_OUT',
+    'JNO',
+    'JYES',
 ];
 
 foreach ($translationStrings as $string) {
