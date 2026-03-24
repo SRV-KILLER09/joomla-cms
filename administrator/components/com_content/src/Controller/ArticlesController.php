@@ -11,7 +11,6 @@
 namespace Joomla\Component\Content\Administrator\Controller;
 
 use Joomla\CMS\Application\CMSApplication;
-use Joomla\CMS\Application\CMSWebApplicationInterface;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\Controller\AdminController;
 use Joomla\CMS\MVC\Factory\MVCFactoryInterface;
@@ -152,18 +151,10 @@ class ArticlesController extends AdminController
             // Publish the items.
             try {
                 $model->publish($cid, $value);
-                $errors = $model->getErrors();
                 $ntext  = null;
 
                 if ($value === 1) {
-                    if ($errors) {
-                        $this->app->enqueueMessage(
-                            Text::plural($this->text_prefix . '_N_ITEMS_FAILED_PUBLISHING', \count($cid)),
-                            CMSWebApplicationInterface::MSG_ERROR
-                        );
-                    } else {
-                        $ntext = $this->text_prefix . '_N_ITEMS_PUBLISHED';
-                    }
+                    $ntext = $this->text_prefix . '_N_ITEMS_PUBLISHED';
                 } elseif ($value === 0) {
                     $ntext = $this->text_prefix . '_N_ITEMS_UNPUBLISHED';
                 } elseif ($value === 2) {
