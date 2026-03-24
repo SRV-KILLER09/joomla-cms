@@ -11,6 +11,7 @@
 namespace Joomla\Component\Content\Administrator\Controller;
 
 use Joomla\CMS\Application\CMSApplication;
+use Joomla\CMS\Application\CMSWebApplicationInterface;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\Controller\AdminController;
 use Joomla\CMS\MVC\Factory\MVCFactoryInterface;
@@ -117,6 +118,93 @@ class ArticlesController extends AdminController
         }
 
         $this->setRedirect(Route::_($redirectUrl, false), $message);
+    }
+
+    /**
+     * Method to publish a list of items.
+     *
+     * @return  void
+     *
+     * @since   5.4.0
+     */
+    public function publish()
+    {
+        $isJsonRequest = $this->input->get('format') === 'json';
+
+        // Check for request forgeries
+        $this->checkToken();
+
+        // Get items to publish from the request.
+        $cid   = (array) $this->input->get('cid', [], 'int');
+        $data  = ['publish' => 1, 'unpublish' => 0, 'archive' => 2, 'trash' => -2, 'report' => -3];
+        $task  = $this->getTask();
+        $value = ArrayHelper::getValue($data, $task, 0, 'int');
+
+        // Remove zero values resulting from input filter
+        $cid = array_filter($cid);
+
+        if (empty($cid)) {
+            $this->getLogger()->warning(Text::_($this->text_prefix . '_NO_ITEM_SELECTED'), ['category' => 'jerror']);
+        } else {
+            // Get the model.
+            $model = $this->getModel();
+
+            // Publish the items.
+            try {
+                $model->publish($cid, $value);
+                $errors = $model->getErrors();
+                $ntext  = null;
+
+                if ($value === 1) {
+                    if ($errors) {
+                        $this->app->enqueueMessage(
+                            Text::plural($this->text_prefix . '_N_ITEMS_FAILED_PUBLISHING', \count($cid)),
+                            CMSWebApplicationInterface::MSG_ERROR
+                        );
+                    } else {
+                        $ntext = $this->text_prefix . '_N_ITEMS_PUBLISHED';
+                    }
+                } elseif ($value === 0) {
+                    $ntext = $this->text_prefix . '_N_ITEMS_UNPUBLISHED';
+                } elseif ($value === 2) {
+                    $ntext = $this->text_prefix . '_N_ITEMS_ARCHIVED';
+                } else {
+                    $ntext = $this->text_prefix . '_N_ITEMS_TRASHED';
+                }
+
+                if (\count($cid) && $ntext !== null) {
+                    $this->setMessage(Text::plural($ntext, \count($cid)));
+                }
+            } catch (\Exception $e) {
+                $this->setMessage($e->getMessage(), 'error');
+            }
+        }
+
+        if ($isJsonRequest) {
+            $messageType = $this->messageType ?: 'message';
+            $message     = $this->message ?: 'Article status updated';
+
+            echo new JsonResponse(
+                [
+                    'status'  => $messageType === 'error' ? 'error' : 'success',
+                    'message' => $message,
+                    'task'    => $task,
+                    'value'   => $value,
+                ],
+                $message,
+                $messageType === 'error'
+            );
+
+            return;
+        }
+
+        $this->setRedirect(
+            Route::_(
+                'index.php?option=' . $this->option . '&view=' . $this->view_list
+                . $this->getRedirectToListAppend(),
+                false
+            )
+        );
     }
 
     /**
