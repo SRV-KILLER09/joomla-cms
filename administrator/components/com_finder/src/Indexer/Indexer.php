@@ -519,6 +519,10 @@ class Indexer
          * already exist for our tokens. If any of the rows in the aggregate
          * table have a term of 0, then no term record exists for that
          * term so we need to add it to the terms table.
+         *
+         * Note: We use a LEFT JOIN to the terms table to exclude any terms
+         * that may already exist, preventing duplicate key errors from
+         * race conditions or duplicate normalized terms.
          */
         $db->setQuery(
             'INSERT INTO ' . $db->quoteName('#__finder_terms') .
@@ -531,7 +535,9 @@ class Indexer
             ', ' . $db->quoteName('language') . ')' .
             ' SELECT ta.term, ta.stem, ta.common, ta.phrase, ta.term_weight, SOUNDEX(ta.term), ta.language' .
             ' FROM ' . $db->quoteName('#__finder_tokens_aggregate') . ' AS ta' .
-            ' WHERE ta.term_id = 0' .
+            ' LEFT JOIN ' . $db->quoteName('#__finder_terms') . ' AS ft' .
+            ' ON ft.term = ta.term AND ft.language = ta.language' .
+            ' WHERE ta.term_id = 0 AND ft.term_id IS NULL' .
             ' GROUP BY ta.term, ta.stem, ta.common, ta.phrase, ta.term_weight, SOUNDEX(ta.term), ta.language'
         );
         $db->execute();
