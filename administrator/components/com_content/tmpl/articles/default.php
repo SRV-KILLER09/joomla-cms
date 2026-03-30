@@ -379,7 +379,18 @@ $assoc = Associations::isEnabled();
                                     </td>
                                 <?php endif; ?>
                                 <td class="d-none d-lg-table-cell">
-                                    <?php echo (int) $item->id; ?>
+                                    <span id="article-id-<?php echo (int) $item->id; ?>"><?php echo (int) $item->id; ?></span>
+                                    <button class="btn btn-sm btn-light copy-btn" data-copy-target="article-id-<?php echo (int) $item->id; ?>" title="Copy Article ID" type="button">
+                                        <span class="icon-copy" aria-hidden="true"></span>
+                                    </button>
+                                    <?php
+                                    // Build the frontend URL for the article
+                                    $frontendUrl = JUri::root() . 'index.php?option=com_content&view=article&id=' . (int) $item->id;
+                                    ?>
+                                    <span id="article-url-<?php echo (int) $item->id; ?>" class="d-none"><?php echo $frontendUrl; ?></span>
+                                    <button class="btn btn-sm btn-light copy-btn" data-copy-target="article-url-<?php echo (int) $item->id; ?>" title="Copy Article URL" type="button">
+                                        <span class="icon-link" aria-hidden="true"></span>
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -388,6 +399,10 @@ $assoc = Associations::isEnabled();
 
                     <?php // load the pagination. ?>
                     <?php echo $this->pagination->getListFooter(); ?>
+<?php
+// Add the copy-clipboard.js script
+$wa->registerAndUseScript('com_content.copy-clipboard', 'administrator/components/com_content/tmpl/articles/copy-clipboard.js', [], ['defer' => true]);
+?>
 
                     <?php // Load the batch processing form. ?>
                     <?php
