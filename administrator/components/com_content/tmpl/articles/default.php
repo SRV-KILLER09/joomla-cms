@@ -31,6 +31,7 @@ use Joomla\Utilities\ArrayHelper;
 $wa = $this->getDocument()->getWebAssetManager();
 $wa->useScript('table.columns')
     ->useScript('multiselect');
+$wa->registerAndUseScript('copy-clipboard', 'components/com_content/tmpl/articles/copy-clipboard.js', [], [], ['defer' => true]);
 
 $app       = Factory::getApplication();
 $user      = $this->getCurrentUser();
@@ -258,6 +259,9 @@ $assoc = Associations::isEnabled();
                                         <?php else : ?>
                                             <span title="<?php echo Text::sprintf('JFIELD_ALIAS_LABEL', $this->escape($item->alias)); ?>"><?php echo $this->escape($item->title); ?></span>
                                         <?php endif; ?>
+                                        <button class="btn btn-xs btn-light copy-clipboard-btn ms-1" data-copy-value="<?php echo htmlspecialchars(JUri::root() . 'index.php?option=com_content&view=article&id=' . $item->id, ENT_QUOTES); ?>" data-tooltip="Copy URL" data-original-title="Copy URL" title="Copy URL" type="button" style="padding:0 6px;">
+                                            <span class="icon-copy" aria-hidden="true"></span>
+                                        </button>
                                         <div class="small break-word">
                                             <?php if (empty($item->note)) : ?>
                                                 <?php echo Text::sprintf('JGLOBAL_LIST_ALIAS', $this->escape($item->alias)); ?>
@@ -374,6 +378,9 @@ $assoc = Associations::isEnabled();
                                 <?php endif; ?>
                                 <td class="d-none d-lg-table-cell">
                                     <?php echo (int) $item->id; ?>
+                                    <button class="btn btn-xs btn-light copy-clipboard-btn ms-1" data-copy-value="<?php echo (int) $item->id; ?>" data-tooltip="Copy ID" data-original-title="Copy ID" title="Copy ID" type="button" style="padding:0 6px;">
+                                        <span class="icon-copy" aria-hidden="true"></span>
+                                    </button>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
