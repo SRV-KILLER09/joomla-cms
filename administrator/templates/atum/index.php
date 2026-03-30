@@ -134,6 +134,28 @@ $statusModules = LayoutHelper::render('status', ['modules' => 'status']);
     <jdoc:include type="metas" />
     <jdoc:include type="styles" />
     <jdoc:include type="scripts" />
+        <script src="js/darkmode-toggle.js"></script>
+        <style>
+            :root[data-color-scheme="dark"] {
+                --template-bg-light: #23272e;
+                --template-text-dark: #f0f4fb;
+                --template-text-light: #23272e;
+                background: #23272e !important;
+                color: #f0f4fb !important;
+            }
+            :root[data-color-scheme="dark"] body {
+                background: #23272e !important;
+                color: #f0f4fb !important;
+            }
+            .btn-darkmode {
+                transition: background 0.2s, color 0.2s;
+            }
+            :root[data-color-scheme="dark"] .btn-darkmode {
+                background: #23272e !important;
+                color: #f0f4fb !important;
+                border-color: #888;
+            }
+        </style>
 </head>
 
 <body class="admin <?php echo $option . ' view-' . $view . ' layout-' . $layout . ($task ? ' task-' . $task : '') . ($monochrome || $a11y_mono ? ' monochrome' : '') . ($a11y_contrast ? ' a11y_contrast' : '') . ($a11y_highlight ? ' a11y_highlight' : ''); ?>">
