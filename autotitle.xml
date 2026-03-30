@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="content" method="upgrade">
+    <name>plg_content_autotitle</name>
+    <author>Your Name</author>
+    <creationDate>2026-03-30</creationDate>
+    <copyright>(C) 2026 Your Name. All rights reserved.</copyright>
+    <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+    <version>1.0.0</version>
+    <description>PLG_CONTENT_AUTOTITLE_XML_DESCRIPTION</description>
+    <files>
+        <filename plugin="autotitle">src/Extension/Autotitle.php</filename>
+        <filename>services/provider.php</filename>
+        <filename>language/en-GB/plg_content_autotitle.ini</filename>
+        <filename>language/en-GB/plg_content_autotitle.sys.ini</filename>
+    </files>
+    <languages>
+        <language tag="en-GB">language/en-GB/plg_content_autotitle.ini</language>
+        <language tag="en-GB">language/en-GB/plg_content_autotitle.sys.ini</language>
+    </languages>
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="autotitle_text" type="text" label="PLG_CONTENT_AUTOTITLE_FIELD_AUTOTITLE_TEXT_LABEL" description="PLG_CONTENT_AUTOTITLE_FIELD_AUTOTITLE_TEXT_DESC" />
+            </fieldset>
+        </fields>
+    </config>
+</extension>

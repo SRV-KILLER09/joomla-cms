@@ -1,3 +1,36 @@
+# Joomla Content Plugin – Auto Title
+This repository contains a Joomla content plugin developed as part of a Google Summer of Code (GSoC) test task.
+
+## Overview
+The **Auto Title** plugin automatically pre-fills the article title field with a configurable default value when creating a new article in the Joomla administrator interface. This helps streamline content creation and ensures consistency for new articles.
+
+## Features
+- Adds a plugin parameter to set the default article title (`autotitle_text`).
+- Integrates with the Joomla admin article form.
+- Uses Joomla's AJAX interface (`com_ajax`) to fetch and prefill the title.
+- Only fills the title if the field is empty and the article is new.
+- Fully respects manual user input—your title is never overwritten.
+
+## Installation & Usage
+1. Install the plugin ZIP file via the Joomla administrator.
+2. Enable the **Content - Auto Title** plugin.
+3. Set your preferred default title in the plugin settings.
+4. Go to **Content → Articles → New** to create a new article.
+5. The title field will be prefilled with your default value if left empty.
+
+## File Structure
+- `autotitle.xml` – Plugin manifest.
+- `services/provider.php` – Service provider for dependency injection.
+- `src/Extension/Autotitle.php` – Main plugin logic.
+- `language/en-GB/plg_content_autotitle.ini` – Language strings.
+- `language/en-GB/plg_content_autotitle.sys.ini` – System language strings.
+
+## Testing
+- The plugin has been manually tested for correct behavior in the Joomla admin.
+- To test: install, enable, configure, and create a new article as described above.
+
+## License
+This project is licensed under the GNU General Public License v2.0 or later.
 Joomla! CMS™
 ====================
 

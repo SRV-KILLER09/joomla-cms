@@ -15,11 +15,8 @@ use Joomla\CMS\Factory;
 use Joomla\CMS\Object\CMSObject;
 use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\CMS\Profiler\Profiler;
-use Joomla\Database\DatabaseInterface;
-use Joomla\Database\ParameterType;
-use Joomla\Database\QueryInterface;
-use Joomla\Filesystem\File;
-use Joomla\String\StringHelper;
+use Joomla\CMS\Filesystem\File;
+use Joomla\Database\DatabaseDriver;
 
 // phpcs:disable PSR1.Files.SideEffects
 \defined('_JEXEC') or die;
@@ -99,7 +96,7 @@ class Indexer
     /**
      * Database driver cache.
      *
-     * @var    \Joomla\Database\DatabaseDriver
+     * @var    DatabaseDriver
      * @since  3.8.0
      */
     protected $db;
@@ -107,7 +104,7 @@ class Indexer
     /**
      * Reusable Query Template. To be used with clone.
      *
-     * @var    QueryInterface
+     * @var    mixed
      * @since  3.8.0
      */
     protected $addTokensToDbQueryTemplate;
@@ -115,15 +112,15 @@ class Indexer
     /**
      * Indexer constructor.
      *
-     * @param  ?DatabaseInterface  $db  The database
+     * @param  ?DatabaseDriver  $db  The database
      *
      * @since  3.8.0
      */
-    public function __construct(?DatabaseInterface $db = null)
+    public function __construct(?DatabaseDriver $db = null)
     {
         if ($db === null) {
             @trigger_error('Database will be mandatory in 5.0.', E_USER_DEPRECATED);
-            $db = Factory::getContainer()->get(DatabaseInterface::class);
+            $db = Factory::getContainer()->get(DatabaseDriver::class);
         }
 
         $this->db = $db;
@@ -215,7 +212,10 @@ class Indexer
         }
 
         // Setup the profiler if debugging is enabled.
-        if (Factory::getApplication()->get('debug')) {
+        $app = Factory::getApplication();
+        // Use getConfig()->get('debug') for debug mode in newer Joomla versions
+        $debug = method_exists($app, 'getConfig') ? $app->getConfig()->get('debug') : false;
+        if ($debug) {
             static::$profiler = Profiler::getInstance('FinderIndexer');
         }
 
@@ -350,7 +350,7 @@ class Indexer
         $entry->title = $item->title;
 
         // We are shortening the description in order to not run into length issues with this field
-        $entry->description        = StringHelper::substr($item->description, 0, 32000);
+        $entry->description        = mb_substr($item->description, 0, 32000);
         $entry->indexdate          = Factory::getDate()->toSql();
         $entry->state              = (int) $item->state;
         $entry->access             = (int) $item->access;
@@ -513,34 +513,62 @@ class Indexer
         // Mark afterAggregating in the profiler.
         static::$profiler ? static::$profiler->mark('afterAggregating') : null;
 
+
         /*
-         * When we pulled down all of the aggregate data, we did a LEFT JOIN
-         * over the terms table to try to find all the term ids that
-         * already exist for our tokens. If any of the rows in the aggregate
-         * table have a term of 0, then no term record exists for that
-         * term so we need to add it to the terms table.
-         *
-         * Note: We use a LEFT JOIN to the terms table to exclude any terms
-         * that may already exist, preventing duplicate key errors from
-         * race conditions or duplicate normalized terms.
+         * Insert new terms into the #__finder_terms table, but only if they do not already exist.
+         * This uses a LEFT JOIN to exclude any terms that are already present, preventing duplicate key errors.
+         * The query builder is used for clarity and maintainability, following Joomla best practices.
          */
-        $db->setQuery(
-            'INSERT INTO ' . $db->quoteName('#__finder_terms') .
-            ' (' . $db->quoteName('term') .
-            ', ' . $db->quoteName('stem') .
-            ', ' . $db->quoteName('common') .
-            ', ' . $db->quoteName('phrase') .
-            ', ' . $db->quoteName('weight') .
-            ', ' . $db->quoteName('soundex') .
-            ', ' . $db->quoteName('language') . ')' .
-            ' SELECT ta.term, ta.stem, ta.common, ta.phrase, ta.term_weight, SOUNDEX(ta.term), ta.language' .
-            ' FROM ' . $db->quoteName('#__finder_tokens_aggregate') . ' AS ta' .
-            ' LEFT JOIN ' . $db->quoteName('#__finder_terms') . ' AS ft' .
-            ' ON ft.term = ta.term AND ft.language = ta.language' .
-            ' WHERE ta.term_id = 0 AND ft.term_id IS NULL' .
-            ' GROUP BY ta.term, ta.stem, ta.common, ta.phrase, ta.term_weight, SOUNDEX(ta.term), ta.language'
-        );
-        $db->execute();
+        $select = $db->getQuery(true)
+            ->select([
+                'ta.term',
+                'ta.stem',
+                'ta.common',
+                'ta.phrase',
+                'ta.term_weight',
+                'SOUNDEX(ta.term) AS soundex',
+                'ta.language',
+            ])
+            ->from($db->quoteName('#__finder_tokens_aggregate', 'ta'))
+            ->leftJoin($db->quoteName('#__finder_terms', 'ft') . ' ON ft.term = ta.term AND ft.language = ta.language')
+            ->where($db->quoteName('ta.term_id') . ' = :termid')
+            ->andWhere('ft.term_id IS NULL')
+            ->group([
+                $db->quoteName('ta.term'),
+                $db->quoteName('ta.stem'),
+                $db->quoteName('ta.common'),
+                $db->quoteName('ta.phrase'),
+                $db->quoteName('ta.term_weight'),
+                'SOUNDEX(ta.term)',
+                $db->quoteName('ta.language'),
+            ]);
+
+        $insert = $db->getQuery(true)
+            ->insert($db->quoteName('#__finder_terms'))
+            ->columns([
+                $db->quoteName('term'),
+                $db->quoteName('stem'),
+                $db->quoteName('common'),
+                $db->quoteName('phrase'),
+                $db->quoteName('weight'),
+                $db->quoteName('soundex'),
+                $db->quoteName('language'),
+            ])
+            ->select($select);
+
+        // Bind the parameter for term_id (0 means new terms)
+        $select->bind(':termid', 0, \Joomla\Database\ParameterType::INTEGER);
+
+
+        try {
+            $db->setQuery($insert);
+            $db->execute();
+        } catch (\Exception $e) {
+            // Log the error for debugging
+            \Joomla\CMS\Factory::getApplication()->getLogger()->error('Finder Indexer term insert error: ' . $e->getMessage(), ['category' => 'finder']);
+            // Show a user-friendly error in the admin UI
+            throw new \RuntimeException('An error occurred while indexing terms. Please check for duplicate or invalid terms and try again. Details: ' . $e->getMessage());
+        }
 
         /*
          * Now, we just inserted a bunch of new records into the terms table
@@ -558,8 +586,14 @@ class Indexer
             $query->set($db->quoteName('term_id') . ' = ' . $db->quoteName('t.term_id'));
         }
 
-        $db->setQuery($query);
-        $db->execute();
+
+        try {
+            $db->setQuery($query);
+            $db->execute();
+        } catch (\Exception $e) {
+            \Joomla\CMS\Factory::getApplication()->getLogger()->error('Finder Indexer aggregate update error: ' . $e->getMessage(), ['category' => 'finder']);
+            throw new \RuntimeException('An error occurred while updating term aggregates. Please check your data and try again. Details: ' . $e->getMessage());
+        }
 
         // Mark afterTerms in the profiler.
         static::$profiler ? static::$profiler->mark('afterTerms') : null;
@@ -579,8 +613,14 @@ class Indexer
             $query->set($db->quoteName('links') . ' = t.links + 1');
         }
 
-        $db->setQuery($query);
-        $db->execute();
+
+        try {
+            $db->setQuery($query);
+            $db->execute();
+        } catch (\Exception $e) {
+            \Joomla\CMS\Factory::getApplication()->getLogger()->error('Finder Indexer links update error: ' . $e->getMessage(), ['category' => 'finder']);
+            throw new \RuntimeException('An error occurred while updating term link counters. Please check your data and try again. Details: ' . $e->getMessage());
+        }
 
         // Mark afterTerms in the profiler.
         static::$profiler ? static::$profiler->mark('afterTerms') : null;
@@ -592,18 +632,24 @@ class Indexer
          * sub-totals together to arrive at the final total for each token for
          * this link. Then, we insert all of that data into the mapping table.
          */
-        $db->setQuery(
-            'INSERT INTO ' . $db->quoteName('#__finder_links_terms') .
-            ' (' . $db->quoteName('link_id') .
-            ', ' . $db->quoteName('term_id') .
-            ', ' . $db->quoteName('weight') . ')' .
-            ' SELECT ' . (int) $linkId . ', ' . $db->quoteName('term_id') . ',' .
-            ' ROUND(SUM(' . $db->quoteName('context_weight') . '), 8)' .
-            ' FROM ' . $db->quoteName('#__finder_tokens_aggregate') .
-            ' GROUP BY ' . $db->quoteName('term') . ', ' . $db->quoteName('term_id') .
-            ' ORDER BY ' . $db->quoteName('term') . ' DESC'
-        );
-        $db->execute();
+
+        try {
+            $db->setQuery(
+                'INSERT INTO ' . $db->quoteName('#__finder_links_terms') .
+                ' (' . $db->quoteName('link_id') .
+                ', ' . $db->quoteName('term_id') .
+                ', ' . $db->quoteName('weight') . ')' .
+                ' SELECT ' . (int) $linkId . ', ' . $db->quoteName('term_id') . ',' .
+                ' ROUND(SUM(' . $db->quoteName('context_weight') . '), 8)' .
+                ' FROM ' . $db->quoteName('#__finder_tokens_aggregate') .
+                ' GROUP BY ' . $db->quoteName('term') . ', ' . $db->quoteName('term_id') .
+                ' ORDER BY ' . $db->quoteName('term') . ' DESC'
+            );
+            $db->execute();
+        } catch (\Exception $e) {
+            \Joomla\CMS\Factory::getApplication()->getLogger()->error('Finder Indexer mapping insert error: ' . $e->getMessage(), ['category' => 'finder']);
+            throw new \RuntimeException('An error occurred while mapping terms to links. Please check your data and try again. Details: ' . $e->getMessage());
+        }
 
         // Mark afterMapping in the profiler.
         static::$profiler ? static::$profiler->mark('afterMapping') : null;
@@ -612,12 +658,9 @@ class Indexer
         $object = serialize($item);
         $query->clear()
             ->update($db->quoteName('#__finder_links'))
-            ->set($db->quoteName('md5sum') . ' = :md5sum')
-            ->set($db->quoteName('object') . ' = :object')
-            ->where($db->quoteName('link_id') . ' = :linkid')
-            ->bind(':md5sum', $curSig)
-            ->bind(':object', $object, ParameterType::LARGE_OBJECT)
-            ->bind(':linkid', $linkId, ParameterType::INTEGER);
+            ->set($db->quoteName('md5sum') . ' = ' . $db->quote($curSig))
+            ->set($db->quoteName('object') . ' = ' . $db->quote($object))
+            ->where($db->quoteName('link_id') . ' = ' . (int) $linkId);
         $db->setQuery($query);
         $db->execute();
 
@@ -665,15 +708,13 @@ class Indexer
             ->update($db->quoteName('#__finder_terms', 't'))
             ->join('INNER', $db->quoteName('#__finder_links_terms', 'm'), $db->quoteName('m.term_id') . ' = ' . $db->quoteName('t.term_id'))
             ->set($db->quoteName('links') . ' = ' . $db->quoteName('links') . ' - 1')
-            ->where($db->quoteName('m.link_id') . ' = :linkid')
-            ->bind(':linkid', $linkId, ParameterType::INTEGER);
+            ->where($db->quoteName('m.link_id') . ' = ' . (int) $linkId);
         $db->setQuery($query)->execute();
 
         // Remove all records from the mapping tables.
         $query->clear()
             ->delete($db->quoteName('#__finder_links_terms'))
-            ->where($db->quoteName('link_id') . ' = :linkid')
-            ->bind(':linkid', $linkId, ParameterType::INTEGER);
+            ->where($db->quoteName('link_id') . ' = ' . (int) $linkId);
         $db->setQuery($query)->execute();
 
         // Delete all orphaned terms.
@@ -685,8 +726,7 @@ class Indexer
         // Delete the link from the index.
         $query->clear()
             ->delete($db->quoteName('#__finder_links'))
-            ->where($db->quoteName('link_id') . ' = :linkid')
-            ->bind(':linkid', $linkId, ParameterType::INTEGER);
+            ->where($db->quoteName('link_id') . ' = ' . (int) $linkId);
         $db->setQuery($query)->execute();
 
         // Remove the taxonomy maps.
@@ -862,7 +902,7 @@ class Indexer
                         $string = substr($buffer, 0, $ls);
 
                         // Adjust the buffer based on the last space for the next iteration and trim.
-                        $buffer = StringHelper::trim(substr($buffer, $ls));
+                        $buffer = trim(substr($buffer, $ls));
                     } else {
                         // No space character was found.
                         $string = $buffer;
