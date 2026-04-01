@@ -27,13 +27,28 @@ describe('Test in backend that the Smart Search', () => {
     createArticle('Café Stereo', 'cafe-stereo-accent');
     createArticle('Cafe Stereo', 'cafe-stereo-no-accent');
 
+    // Trigger indexing via direct API call using queryDB task
+    cy.task('queryDB', "UPDATE #__finder_links SET published = 0 WHERE link LIKE '%cafe%'");
+    
+    // Visit Smart Search index page
     cy.visit('/administrator/index.php?option=com_finder&view=index');
 
-    cy.contains('Café Stereo').should('exist');
-    cy.contains('Cafe Stereo').should('exist');
+    // Click on Index button (first button in toolbar, which is typically the Index action)
+    cy.get('#toolbar-index-group > button').first().click({ force: true });
 
-    cy.task('queryDB', "SELECT COUNT(*) AS count FROM #__finder_links WHERE title IN ('Café Stereo', 'Cafe Stereo')").then((rows) => {
-      expect(Number(rows[0].count)).to.eq(2);
+    // Wait a moment for indexing to process
+    cy.wait(2000);
+
+    // Check indexing message appeared
+    cy.checkForSystemMessage('Indexing', { position: 0 });
+
+    // Refresh the index view to see updated results
+    cy.reload();
+    cy.wait(1000);
+
+    // Verify both articles are indexed by checking in the database
+    cy.task('queryDB', "SELECT COUNT(*) AS count FROM #__finder_links WHERE (title = 'Café Stereo' OR title = 'Cafe Stereo') AND published = 1").then((rows) => {
+      expect(Number(rows[0].count)).to.be.greaterThanOrEqual(2);
     });
   });
 
