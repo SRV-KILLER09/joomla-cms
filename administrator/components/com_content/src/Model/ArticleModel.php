@@ -1099,12 +1099,6 @@ class ArticleModel extends AdminModel implements WorkflowModelInterface, Version
      */
     public function delete(&$pks)
     {
-        $menuDependencies = $this->countMenuDependenciesForArticles((array) $pks);
-
-        if ($menuDependencies > 0 && Factory::getApplication()->isClient('administrator')) {
-            Factory::getApplication()->enqueueMessage(Text::plural('COM_CONTENT_DELETE_WARNING_MENU_DEPENDENCIES', $menuDependencies), 'warning');
-        }
-
         $return = parent::delete($pks);
 
         if ($return) {
@@ -1120,80 +1114,5 @@ class ArticleModel extends AdminModel implements WorkflowModelInterface, Version
         }
 
         return $return;
-    }
-
-    /**
-     * Count menu links that reference selected articles.
-     *
-     * @param   array  $articleIds  Article IDs to check.
-     *
-     * @return  integer
-     *
-    * @since   6.2.0
-     */
-    private function countMenuDependenciesForArticles(array $articleIds): int
-    {
-        $articleIds = array_filter(ArrayHelper::toInteger($articleIds));
-
-        if ($articleIds === []) {
-            return 0;
-        }
-
-        $db    = $this->getDatabase();
-        $query = $db->createQuery()
-            ->select($db->quoteName('link'))
-            ->from($db->quoteName('#__menu'))
-            ->where($db->quoteName('published') . ' != -2')
-            ->where($db->quoteName('link') . ' LIKE :option')
-            ->where($db->quoteName('link') . ' LIKE :view')
-            ->bind(':option', '%option=com_content%')
-            ->bind(':view', '%view=article%');
-
-        $db->setQuery($query);
-
-        $count = 0;
-
-        foreach ($db->loadColumn() as $link) {
-            $menuArticleId = $this->extractContentIdFromMenuLink((string) $link, 'article');
-
-            if ($menuArticleId > 0 && \in_array($menuArticleId, $articleIds, true)) {
-                $count++;
-            }
-        }
-
-        return $count;
-    }
-
-    /**
-     * Extract the content id for a com_content menu link and expected view.
-     *
-     * @param   string  $link  Menu item link.
-     * @param   string  $view  Expected com_content view.
-     *
-     * @return  integer
-     *
-    * @since   6.2.0
-     */
-    private function extractContentIdFromMenuLink(string $link, string $view): int
-    {
-        $decodedLink = html_entity_decode($link, ENT_QUOTES, 'UTF-8');
-        $queryString = parse_url($decodedLink, PHP_URL_QUERY);
-
-        if (!$queryString) {
-            $parts       = explode('?', $decodedLink, 2);
-            $queryString = $parts[1] ?? '';
-        }
-
-        if ($queryString === '') {
-            return 0;
-        }
-
-        parse_str($queryString, $params);
-
-        if (($params['option'] ?? '') !== 'com_content' || ($params['view'] ?? '') !== $view) {
-            return 0;
-        }
-
-        return (int) ($params['id'] ?? 0);
     }
 }
