@@ -3,7 +3,7 @@ describe('Test in backend that the Smart Search', () => {
     cy.doAdministratorLogin();
   });
   afterEach(() => {
-    cy.task('queryDB', "DELETE FROM #__content WHERE title = 'Test article'");
+    cy.task('queryDB', "DELETE FROM #__content WHERE title IN ('Test article', 'Cafe Stereo', 'Café Stereo')");
   });
 
   it('can index an article', () => {
@@ -14,6 +14,21 @@ describe('Test in backend that the Smart Search', () => {
     // Visit the smart search page
     cy.visit('/administrator/index.php?option=com_finder&view=index');
     cy.contains('Test article').should('exist');
+  });
+
+  it('can index articles with duplicate normalized terms', () => {
+    cy.db_createArticle({ title: 'Café Stereo' })
+      .then(() => cy.db_createArticle({ title: 'Cafe Stereo' }))
+      .then(() => {
+        cy.visit('/administrator/index.php?option=com_finder&view=index');
+
+        cy.contains('Café Stereo').should('exist');
+        cy.contains('Cafe Stereo').should('exist');
+
+        cy.task('queryDB', "SELECT COUNT(*) AS count FROM #__finder_links WHERE title IN ('Café Stereo', 'Cafe Stereo')").then((rows) => {
+          expect(Number(rows[0].count)).to.eq(2);
+        });
+      });
   });
 
   it('can purge the index', () => {
