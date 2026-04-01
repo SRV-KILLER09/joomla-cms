@@ -120,6 +120,119 @@ class CategoryModel extends AdminModel implements VersionableModelInterface
     }
 
     /**
+     * Method to delete one or more records.
+     *
+     * @param   array  &$pks  An array of record primary keys.
+     *
+     * @return  boolean  True if successful, false if an error occurs.
+     *
+      * @since   6.2.0
+     */
+    public function delete(&$pks)
+    {
+        $menuDependencies = $this->countMenuDependenciesForCategories((array) $pks);
+
+        if ($menuDependencies > 0 && Factory::getApplication()->isClient('administrator')) {
+            Factory::getApplication()->enqueueMessage(Text::plural('COM_CATEGORIES_DELETE_WARNING_MENU_DEPENDENCIES', $menuDependencies), 'warning');
+        }
+
+        return parent::delete($pks);
+    }
+
+    /**
+     * Count menu links that reference selected com_content categories.
+     *
+     * @param   array  $categoryIds  Category IDs to check.
+     *
+     * @return  integer
+     *
+     * @since   6.2.0
+     */
+    private function countMenuDependenciesForCategories(array $categoryIds): int
+    {
+        $categoryIds = array_filter(ArrayHelper::toInteger($categoryIds));
+
+        if ($categoryIds === []) {
+            return 0;
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->createQuery()
+            ->select($db->quoteName(['id', 'extension']))
+            ->from($db->quoteName('#__categories'))
+            ->whereIn($db->quoteName('id'), $categoryIds);
+
+        $db->setQuery($query);
+
+        $contentCategoryIds = [];
+
+        foreach ($db->loadAssocList() as $category) {
+            if (strpos((string) ($category['extension'] ?? ''), 'com_content') === 0) {
+                $contentCategoryIds[] = (int) $category['id'];
+            }
+        }
+
+        if ($contentCategoryIds === []) {
+            return 0;
+        }
+
+        $query = $db->createQuery()
+            ->select($db->quoteName('link'))
+            ->from($db->quoteName('#__menu'))
+            ->where($db->quoteName('published') . ' != -2')
+            ->where($db->quoteName('link') . ' LIKE :option')
+            ->where($db->quoteName('link') . ' LIKE :view')
+            ->bind(':option', '%option=com_content%')
+            ->bind(':view', '%view=category%');
+
+        $db->setQuery($query);
+
+        $count = 0;
+
+        foreach ($db->loadColumn() as $link) {
+            $menuCategoryId = $this->extractContentCategoryIdFromMenuLink((string) $link);
+
+            if ($menuCategoryId > 0 && \in_array($menuCategoryId, $contentCategoryIds, true)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Extract category id for a com_content category menu link.
+     *
+     * @param   string  $link  Menu item link.
+     *
+     * @return  integer
+     *
+      * @since   6.2.0
+     */
+    private function extractContentCategoryIdFromMenuLink(string $link): int
+    {
+        $decodedLink = html_entity_decode($link, ENT_QUOTES, 'UTF-8');
+        $queryString = parse_url($decodedLink, PHP_URL_QUERY);
+
+        if (!$queryString) {
+            $parts       = explode('?', $decodedLink, 2);
+            $queryString = $parts[1] ?? '';
+        }
+
+        if ($queryString === '') {
+            return 0;
+        }
+
+        parse_str($queryString, $params);
+
+        if (($params['option'] ?? '') !== 'com_content' || ($params['view'] ?? '') !== 'category') {
+            return 0;
+        }
+
+        return (int) ($params['id'] ?? 0);
+    }
+
+    /**
      * Method to test whether a record can have its state changed.
      *
      * @param   object  $record  A record object.
